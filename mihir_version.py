@@ -41,7 +41,10 @@ def one_hot_encoding(labels, num_classes=10):
     """
     Encode labels using one hot encoding and return them.
     """
-    return labels
+    num_labels = labels.shape[0]
+    encoded = np.zeros((num_labels, num_classes))
+    encoded[np.arange(num_labels), labels[np.arange(num_labels)]] = 1
+    return encoded
 
 
 def load_data(path, mode='train'):
@@ -70,6 +73,10 @@ def softmax(x):
     Implement the softmax function here.
     Remember to take care of the overflow condition.
     """
+    max_val = np.amax(x)
+    numerator = np.exp(x-max_val)
+    denominator = np.sum(numerator, axis=1).reshape((numerator.shape[0],1))
+    return numerator/denominator
     raise NotImplementedError("Softmax not implemented")
 
 
@@ -322,6 +329,7 @@ def test(model, X_test, y_test):
     """
     Calculate and return the accuracy on the test set.
     """
+
     raise NotImplementedError("Test method not implemented")
 
 
