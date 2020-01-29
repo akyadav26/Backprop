@@ -1,3 +1,4 @@
+
 ################################################################################
 # CSE 253: Programming Assignment 2
 # Code snippet by Manjot Bilkhu
@@ -28,6 +29,12 @@ def normalize_data(img):
     """
     Normalize your inputs here and return them.
     """
+    #print(img[1,:])
+    nor = [np.linalg.norm(img[i,:]) for i in range(len(img))]
+    nor = np.asarray(nor)
+    nor = np.reshape(nor, (len(img), 1))
+    img = np.divide(img, nor)
+    #print(img[1,:])
     return img
 
 
@@ -72,14 +79,14 @@ def softmax(x):
     numerator = np.exp(x-max_val)
     denominator = np.sum(numerator, axis=1).reshape((numerator.shape[0],1))
     return numerator/denominator
-    # raise NotImplementedError("Softmax not implemented")
+
+    #raise NotImplementedError("Softmax not implemented")
 
 
 class Activation():
     """
     The class implements different types of activation functions for
     your neural network layers.
-
     Example (for sigmoid):
         >>> sigmoid_layer = Activation("sigmoid")
         >>> z = sigmoid_layer(a)
@@ -102,6 +109,7 @@ class Activation():
         """
         This method allows your instances to be callable.
         """
+        self.x = a
         return self.forward(a)
 
     def forward(self, a):
@@ -136,43 +144,54 @@ class Activation():
         """
         Implement the sigmoid activation here.
         """
+        y = 1/(1 + np.exp((-x))
+        return y    
         raise NotImplementedError("Sigmoid not implemented")
 
     def tanh(self, x):
         """
         Implement tanh here.
         """
+        return np.tanh(x)
         raise NotImplementedError("Tanh not implemented")
 
     def ReLU(self, x):
         """
         Implement ReLU here.
         """
+        y = x
+        y[y<=0] = 0
+        return y
         raise NotImplementedError("ReLu not implemented")
 
     def grad_sigmoid(self):
         """
         Compute the gradient for sigmoid here.
         """
+        return sigmoid(self.x)*(sigmoid(-self.x))
         raise NotImplementedError("Sigmoid gradient not implemented")
 
     def grad_tanh(self):
         """
         Compute the gradient for tanh here.
         """
+        return (1-np.tanh(self.x)*np.tanh(self.x))
         raise NotImplementedError("tanh gradient not implemented")
 
     def grad_ReLU(self):
         """
         Compute the gradient for ReLU here.
         """
+        y = self.x
+        y[y<=0] = 0
+        y[y>0] = 1
+        return y
         raise NotImplementedError("ReLU gradient not implemented")
 
 
 class Layer():
     """
     This class implements Fully Connected layers for your neural network.
-
     Example:
         >>> fully_connected_layer = Layer(784, 100)
         >>> output = fully_connected_layer(input)
@@ -184,8 +203,8 @@ class Layer():
         Define the architecture and create placeholder.
         """
         np.random.seed(42)
-        self.w = None    # Declare the Weight matrix
-        self.b = None    # Create a placeholder for Bias
+        #self.w = None    # Declare the Weight matrix
+        #self.b = None    # Create a placeholder for Bias
         self.x = None    # Save the input to forward in this
         self.a = None    # Save the output of forward pass in this (without activation)
 
@@ -193,10 +212,14 @@ class Layer():
         self.d_w = None  # Save the gradient w.r.t w in this
         self.d_b = None  # Save the gradient w.r.t b in this
 
+        self.w = np.random.rand(in_units, out_units)
+        self.b = np.random.rand(1, out_units)
+
     def __call__(self, x):
         """
         Make layer callable.
         """
+        self.x = x
         return self.forward(x)
 
     def forward(self, x):
@@ -205,6 +228,10 @@ class Layer():
         Do not apply activation here.
         Return self.a
         """
+        X = np.concatenate((np.ones((x.shape[0],1)), x), axis = 1)
+        W = np.concatenate((self.b, self.w), axis = 0)
+        self.a = np.dot(X,W)
+        return self.a
         raise NotImplementedError("Layer forward pass not implemented.")
 
     def backward(self, delta):
@@ -213,14 +240,17 @@ class Layer():
         computes gradient for its weights and the delta to pass to its previous layers.
         Return self.dx
         """
-        self.dx = np.dot(delta, np.transpose(self.w)) * 
+        self.d_x = np.dot(delta, np.transpose(self.w))
+        self.d_w = np.dot(np.transpose(self.x), delta)
+        # self.d_b = ??????
+        return self.d_x
+
         raise NotImplementedError("Backprop for Layer not implemented.")
 
 
 class Neuralnetwork():
     """
     Create a Neural Network specified by the input configuration.
-
     Example:
         >>> net = NeuralNetwork(config)
         >>> output = net(input)
@@ -246,6 +276,8 @@ class Neuralnetwork():
         """
         Make NeuralNetwork callable.
         """
+        self.x = x
+        self.targets = targets
         return self.forward(x, targets)
 
     def forward(self, x, targets=None):
@@ -253,6 +285,17 @@ class Neuralnetwork():
         Compute forward pass through all the layers in the network and return it.
         If targets are provided, return loss as well.
         """
+        lay_one = self.layers[0]
+        a_hid_one = lay_one(x)
+        z_hid_one = self.layers[1](a_hid_one)
+
+        lay_two = self.layers[2]
+        a_hid_two = lay_two(z_hid_one)
+        z_hid_two = self.layers[3](a_hid_two)
+
+        fin_lay = self.layers[4]
+        a_fin = fin_lay(z_hid_two)
+        self.y = softmax(a_fin)
         raise NotImplementedError("Forward not implemented for NeuralNetwork")
 
     def loss(self, logits, targets):
@@ -266,8 +309,16 @@ class Neuralnetwork():
         Implement backpropagation here.
         Call backward methods of individual layer's.
         '''
-        raise NotImplementedError("Backprop not implemented for NeuralNetwork")
+        deltas = self.targets - self.y
+        delta_secondterm = self.layers[4].backward(deltas)
 
+        deltas = self.layers[3].backward(delta_secondterm)
+        delta_secondterm = self.layers[2].backward(deltas)
+
+        deltas = self.layers[1].backward(delta_secondterm)
+        delta_secondterm = self.layers[0].backward(deltas)
+        
+        raise NotImplementedError("Backprop not implemented for NeuralNetwork")
 
 def train(model, x_train, y_train, x_valid, y_valid, config):
     """
@@ -276,7 +327,13 @@ def train(model, x_train, y_train, x_valid, y_valid, config):
     Implement Early Stopping.
     Use config to set parameters for training like learning rate, momentum, etc.
     """
+    epochs = 50
+    for i in range(1, epochs+1):
+        for j in range(len(x_train), 200):
+            model(x_train[j:j+200, :], y_train[j:j+200, :])
 
+
+    
     raise NotImplementedError("Train method not implemented")
 
 
