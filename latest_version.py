@@ -367,10 +367,10 @@ def train(model, x_train, y_train, x_valid, y_valid, config):
             model.backward()            
             #weight update and storing
             for k in range(0, len(config['layer_specs']), 2):
-                mom_w = model.layers[k].d_v_w * beta - alpha*model.layers[k].d_w
-                mom_b = model.layers[k].d_v_b * beta - alpha*model.layers[k].d_b
-                model.layers[k].w = model.layers[k].w + mom_w
-                model.layers[k].b = model.layers[k].b + mom_b
+                mom_w = model.layers[k].d_v_w * beta + alpha*model.layers[k].d_w
+                mom_b = model.layers[k].d_v_b * beta + alpha*model.layers[k].d_b
+                model.layers[k].w = model.layers[k].w - mom_w
+                model.layers[k].b = model.layers[k].b - mom_b
                 model.layers[k].d_v_w = mom_w
                 model.layers[k].d_v_b = mom_b     
 
