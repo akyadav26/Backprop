@@ -309,7 +309,7 @@ class Neuralnetwork():
         #print(logits)
         logits = np.log(logits)
         error = -np.multiply(targets, logits)
-        return np.sum(error)
+        return np.sum(error)/targets.shape[0]
         raise NotImplementedError("Loss not implemented for NeuralNetwork")
 
     def backward(self):
@@ -317,7 +317,7 @@ class Neuralnetwork():
         Implement backpropagation here.
         Call backward methods of individual layer's.
         '''
-        deltas = self.targets - self.y
+        deltas = -(self.targets - self.y)
         i = len(self.layers)-1
 
         while i>=0:
@@ -341,7 +341,7 @@ def train(model, x_train, y_train, x_valid, y_valid, config):
     epochs = config['epochs']
     threshold = config['early_stop_epoch']
     alpha = config['learning_rate']
-    val_loss = np.zeros((epochs,1))
+    val_loss = 10000*np.ones((epochs,1))
     beta = config['momentum_gamma']
     batch_size = config['batch_size']
     
@@ -362,7 +362,8 @@ def train(model, x_train, y_train, x_valid, y_valid, config):
             xbatch = x_train[minibatch_indices, :]
             ybatch = y_train[minibatch_indices, :]
             #print(ybatch.shape)
-            y, loss = model(xbatch, ybatch)            
+            y, loss = model(xbatch, ybatch)
+                                
             model.backward()            
             #weight update and storing
             for k in range(0, len(config['layer_specs']), 2):
@@ -371,10 +372,21 @@ def train(model, x_train, y_train, x_valid, y_valid, config):
                 model.layers[k].w = model.layers[k].w + mom_w
                 model.layers[k].b = model.layers[k].b + mom_b
                 model.layers[k].d_v_w = mom_w
-                model.layers[k].d_v_b = mom_b               
+                model.layers[k].d_v_b = mom_b     
 
+        y, loss = model(x_train, y_train)        
+        train_pred = np.argmax(y, axis=1)  
+        acc = np.mean(np.argwhere(y_train==1)[:,1]==train_pred) 
+
+        print("Training acc for epoch ", i, " is:\n", acc) 
+        print("Training loss for epoch ", i, " is:\n", loss) 
         val_y, val_loss[i-1, 0] = model(x_valid, y_valid)
-        
+
+        val_pred = np.argmax(val_y, axis=1)  
+        acc = np.mean(np.argwhere(y_valid==1)[:,1]==val_pred) 
+
+        print("Validation acc for epoch ", i, " is:\n", acc) 
+        print("Validation loss for epoch ", i, " is:\n", val_loss[i-1,0])
         if(i>1 and val_loss[i-1]<val_loss[i-2]):
             #update best weights
             weight = []
@@ -390,12 +402,13 @@ def train(model, x_train, y_train, x_valid, y_valid, config):
     
     print(len(best_weight))
     print('Epoch: ', i)
+    #print(val_loss)
     p = 0
     for k in range(0, len(config['layer_specs']), 2):
         model.layers[k].w = best_weight[p]
         model.layers[k].b = best_bias[p]
         p = p + 1
-
+    return
     raise NotImplementedError("Train method not implemented")
 
 
@@ -404,6 +417,11 @@ def test(model, X_test, y_test):
     Calculate and return the accuracy on the test set.
     """
     pred, loss = model(X_test, y_test)
+    test_pred = np.argmax(pred, axis=1)  
+    acc = np.mean(np.argwhere(y_test==1)[:,1]==test_pred) 
+
+    print("Test acc is:\n", acc) 
+    return test
     raise NotImplementedError("Test method not implemented")
 
 
