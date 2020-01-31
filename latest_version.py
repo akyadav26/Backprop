@@ -17,6 +17,7 @@ import yaml
 import numpy as np
 
 
+
 def load_config(path):
     """
     Load the configuration from config.yaml.
@@ -28,12 +29,9 @@ def normalize_data(img):
     """
     Normalize your inputs here and return them.
     """
-    #print(img[1,:])
-    nor = [np.linalg.norm(img[i,:]) for i in range(len(img))]
-    nor = np.asarray(nor)
+    nor = np.linalg.norm(img, axis = 1)
     nor = np.reshape(nor, (len(img), 1))
     img = np.divide(img, nor)
-    #print(img[1,:])
     return img
 
 
@@ -44,6 +42,7 @@ def one_hot_encoding(labels, num_classes=10):
     num_labels = labels.shape[0]
     encoded = np.zeros((num_labels, num_classes))
     encoded[np.arange(num_labels), labels[np.arange(num_labels)]] = 1
+    
     return encoded
 
 
@@ -77,14 +76,14 @@ def softmax(x):
     numerator = np.exp(x-max_val)
     denominator = np.sum(numerator, axis=1).reshape((numerator.shape[0],1))
     return numerator/denominator
-    raise NotImplementedError("Softmax not implemented")
+
+    #raise NotImplementedError("Softmax not implemented")
 
 
 class Activation():
     """
     The class implements different types of activation functions for
     your neural network layers.
-
     Example (for sigmoid):
         >>> sigmoid_layer = Activation("sigmoid")
         >>> z = sigmoid_layer(a)
@@ -142,7 +141,7 @@ class Activation():
         """
         Implement the sigmoid activation here.
         """
-        y = 1/(1 + np.exp((-x))
+        y = 1/(1 + np.exp((-x)))
         return y    
         raise NotImplementedError("Sigmoid not implemented")
 
@@ -159,14 +158,14 @@ class Activation():
         """
         y = x
         y[y<=0] = 0
-        return y
+        return (y)
         raise NotImplementedError("ReLu not implemented")
 
     def grad_sigmoid(self):
         """
         Compute the gradient for sigmoid here.
         """
-        return sigmoid(self.x)*(sigmoid(-self.x))
+        return self.sigmoid(self.x)*(self.sigmoid(-self.x))
         raise NotImplementedError("Sigmoid gradient not implemented")
 
     def grad_tanh(self):
@@ -190,7 +189,6 @@ class Activation():
 class Layer():
     """
     This class implements Fully Connected layers for your neural network.
-
     Example:
         >>> fully_connected_layer = Layer(784, 100)
         >>> output = fully_connected_layer(input)
@@ -210,9 +208,13 @@ class Layer():
         self.d_x = None  # Save the gradient w.r.t x in this
         self.d_w = None  # Save the gradient w.r.t w in this
         self.d_b = None  # Save the gradient w.r.t b in this
+        self.d_v_w = None
+        self.d_v_b = None
 
-        self.w = np.random.rand(in_units, out_units)
-        self.b = np.random.rand(1, out_units)
+        self.w = np.random.normal(0, 1, (in_units, out_units))
+        self.b = np.zeros((1, out_units))
+        self.d_v_w = np.zeros((in_units, out_units))
+        self.d_v_b = np.zeros((1, out_units))
 
     def __call__(self, x):
         """
@@ -239,7 +241,10 @@ class Layer():
         computes gradient for its weights and the delta to pass to its previous layers.
         Return self.dx
         """
-
+        self.d_x = np.dot(delta, np.transpose(self.w))
+        self.d_w = np.dot(np.transpose(self.x), delta)/self.x.shape[0]
+        self.d_b = np.mean(delta, axis=0).reshape((1, delta.shape[1]))
+        return self.d_x
 
         raise NotImplementedError("Backprop for Layer not implemented.")
 
@@ -247,7 +252,6 @@ class Layer():
 class Neuralnetwork():
     """
     Create a Neural Network specified by the input configuration.
-
     Example:
         >>> net = NeuralNetwork(config)
         >>> output = net(input)
@@ -282,23 +286,30 @@ class Neuralnetwork():
         Compute forward pass through all the layers in the network and return it.
         If targets are provided, return loss as well.
         """
-        lay_one = self.layers[0]
-        a_hid_one = lay_one(x)
-        z_hid_one = self.layers[1](a_hid_one)
+        inputs, i = x, 0
+               
+        while i < len(self.layers):
+            outputs = self.layers[i](inputs)
+            i += 1
+            if(i==len(self.layers)):
+                break
+            inputs = self.layers[i](outputs)
+            i += 1
 
-        lay_two = self.layers[2]
-        a_hid_two = lay_two(z_hid_one)
-        z_hid_two = self.layers[3](a_hid_two)
+        self.y = softmax(outputs)
 
-        fin_lay = self.layers[4]
-        a_fin = fin_lay(z_hid_two)
-        self.y = softmax(a_fin)
+        return (self.y, self.loss(self.y, targets))
+        
         raise NotImplementedError("Forward not implemented for NeuralNetwork")
 
     def loss(self, logits, targets):
         '''
         compute the categorical cross-entropy loss and return it.
         '''
+        #print(logits)
+        logits = np.log(logits)
+        error = -np.multiply(targets, logits)
+        return np.sum(error)
         raise NotImplementedError("Loss not implemented for NeuralNetwork")
 
     def backward(self):
@@ -306,6 +317,17 @@ class Neuralnetwork():
         Implement backpropagation here.
         Call backward methods of individual layer's.
         '''
+        deltas = self.targets - self.y
+        i = len(self.layers)-1
+
+        while i>=0:
+            prev_delta = self.layers[i].backward(deltas)
+            i -= 1
+            if(i<0):
+                break
+            deltas = self.layers[i].backward(prev_delta)
+            i -= 1
+        return
         raise NotImplementedError("Backprop not implemented for NeuralNetwork")
 
 def train(model, x_train, y_train, x_valid, y_valid, config):
@@ -315,13 +337,65 @@ def train(model, x_train, y_train, x_valid, y_valid, config):
     Implement Early Stopping.
     Use config to set parameters for training like learning rate, momentum, etc.
     """
-    epochs = 50
-    for i in range(1, epochs+1):
-        for j in range(len(x_train), 200):
-            model(x_train[j:j+200, :], y_train[j:j+200, :])
-
-
     
+    epochs = config['epochs']
+    threshold = config['early_stop_epoch']
+    alpha = config['learning_rate']
+    val_loss = np.zeros((epochs,1))
+    beta = config['momentum_gamma']
+    batch_size = config['batch_size']
+    
+    N = x_train.shape[0]
+    num_batches  = int((N+batch_size -1 )/ batch_size)
+    
+    best_weight = []
+    best_bias = []
+    #print(len(model.layers))
+
+      
+    for i in range(1, epochs+1):
+        shuffled_indices = np.random.permutation(range(N))
+        
+        for batch in range(num_batches):
+            minibatch_indices = shuffled_indices[batch_size*batch:min(batch_size*(batch+1), N)]
+            #print(len(minibatch_indices))
+            xbatch = x_train[minibatch_indices, :]
+            ybatch = y_train[minibatch_indices, :]
+            #print(ybatch.shape)
+            y, loss = model(xbatch, ybatch)            
+            model.backward()            
+            #weight update and storing
+            for k in range(0, len(config['layer_specs']), 2):
+                mom_w = model.layers[k].d_v_w * beta - alpha*model.layers[k].d_w
+                mom_b = model.layers[k].d_v_b * beta - alpha*model.layers[k].d_b
+                model.layers[k].w = model.layers[k].w + mom_w
+                model.layers[k].b = model.layers[k].b + mom_b
+                model.layers[k].d_v_w = mom_w
+                model.layers[k].d_v_b = mom_b               
+
+        val_y, val_loss[i-1, 0] = model(x_valid, y_valid)
+        
+        if(i>1 and val_loss[i-1]<val_loss[i-2]):
+            #update best weights
+            weight = []
+            bias = []
+            for k in range(0, len(config['layer_specs']), 2):
+                weight.append(model.layers[k].w)
+                bias.append(model.layers[k].b)
+            best_weight = weight    
+            best_bias = bias
+
+        if(i>=6 and val_loss[i-1]>=val_loss[i-2] and val_loss[i-2]>=val_loss[i-3]and val_loss[i-3]>=val_loss[i-4]and val_loss[i-4]>=val_loss[i-5]and val_loss[i-5]>=val_loss[i-6]):
+            break
+    
+    print(len(best_weight))
+    print('Epoch: ', i)
+    p = 0
+    for k in range(0, len(config['layer_specs']), 2):
+        model.layers[k].w = best_weight[p]
+        model.layers[k].b = best_bias[p]
+        p = p + 1
+
     raise NotImplementedError("Train method not implemented")
 
 
@@ -329,7 +403,7 @@ def test(model, X_test, y_test):
     """
     Calculate and return the accuracy on the test set.
     """
-
+    pred, loss = model(X_test, y_test)
     raise NotImplementedError("Test method not implemented")
 
 
@@ -341,12 +415,15 @@ if __name__ == "__main__":
     model  = Neuralnetwork(config)
 
     # Load the data
-    x_train, y_train = load_data(path="./", mode="train")
+    x, y = load_data(path="./", mode="train")
     x_test,  y_test  = load_data(path="./", mode="t10k")
 
+    #print(x.shape[0])
     # Create splits for validation data here.
     # x_valid, y_valid = ...
-
+    x_train, y_train = x[0:int(0.8*x.shape[0]), :], y[0:int(0.8*y.shape[0]), :]
+    x_valid, y_valid = x[int(0.8*x.shape[0]):, :], y[int(0.8*y.shape[0]):, :]
+    
     # train the model
     train(model, x_train, y_train, x_valid, y_valid, config)
 
