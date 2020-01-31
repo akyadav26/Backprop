@@ -1,4 +1,3 @@
-
 ################################################################################
 # CSE 253: Programming Assignment 2
 # Code snippet by Manjot Bilkhu
@@ -144,7 +143,7 @@ class Activation():
         """
         Implement the sigmoid activation here.
         """
-        y = 1/(1 + np.exp((-x))
+        y = 1/(1 + np.exp((-x)))
         return y    
         raise NotImplementedError("Sigmoid not implemented")
 
@@ -241,8 +240,8 @@ class Layer():
         Return self.dx
         """
         self.d_x = np.dot(delta, np.transpose(self.w))
-        self.d_w = np.dot(np.transpose(self.x), delta)
-        # self.d_b = ??????
+        self.d_w = np.dot(np.transpose(self.x), delta)/self.x.shape[0]
+        self.d_b = np.mean(delta, axis=0).reshape((1, delta.shape[1]))
         return self.d_x
 
         raise NotImplementedError("Backprop for Layer not implemented.")
@@ -285,17 +284,23 @@ class Neuralnetwork():
         Compute forward pass through all the layers in the network and return it.
         If targets are provided, return loss as well.
         """
-        lay_one = self.layers[0]
-        a_hid_one = lay_one(x)
-        z_hid_one = self.layers[1](a_hid_one)
+        inputs, i = x, 0
+               
+        while i < len(self.layers):
+               outputs = self.layers[i](inputs)
+               i += 1
+               if(i==len(self.layers)):
+                   break
+               inputs = self.layers[i](outputs)
+               i += 1
 
-        lay_two = self.layers[2]
-        a_hid_two = lay_two(z_hid_one)
-        z_hid_two = self.layers[3](a_hid_two)
+        self.y = softmax(outputs)
 
-        fin_lay = self.layers[4]
-        a_fin = fin_lay(z_hid_two)
-        self.y = softmax(a_fin)
+        if targets is not None:
+               return self.y
+
+        return self.y, loss(outputs, targets)
+        
         raise NotImplementedError("Forward not implemented for NeuralNetwork")
 
     def loss(self, logits, targets):
@@ -310,13 +315,15 @@ class Neuralnetwork():
         Call backward methods of individual layer's.
         '''
         deltas = self.targets - self.y
-        delta_secondterm = self.layers[4].backward(deltas)
+        i = len(self.layers)-1
 
-        deltas = self.layers[3].backward(delta_secondterm)
-        delta_secondterm = self.layers[2].backward(deltas)
-
-        deltas = self.layers[1].backward(delta_secondterm)
-        delta_secondterm = self.layers[0].backward(deltas)
+        while i>=0:
+               prev_delta = self.layers[i].backward(deltas)
+               i -= 1
+               if(i==0):
+                   break
+               deltas = self.layers[i].backward(prev_deltas)
+               i -= 1
         
         raise NotImplementedError("Backprop not implemented for NeuralNetwork")
 
@@ -353,11 +360,13 @@ if __name__ == "__main__":
     model  = Neuralnetwork(config)
 
     # Load the data
-    x_train, y_train = load_data(path="./", mode="train")
+    x, y = load_data(path="./", mode="train")
     x_test,  y_test  = load_data(path="./", mode="t10k")
 
     # Create splits for validation data here.
     # x_valid, y_valid = ...
+    x_train, y_train = x[0:int(0.8*x.shape[[0]), :], y[0:int(0.8*y.shape[[0]), :]
+    x_valid, y_valid = x[int(0.8*x.shape[[0]):, :], y[int(0.8*y.shape[[0]):, :]
 
     # train the model
     train(model, x_train, y_train, x_valid, y_valid, config)
