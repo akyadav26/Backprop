@@ -15,7 +15,7 @@
 import os, gzip
 import yaml
 import numpy as np
-
+import matplotlib.pyplot as plt
 
 
 def load_config(path):
@@ -211,7 +211,7 @@ class Layer():
         self.d_v_w = None
         self.d_v_b = None
 
-        self.w = np.random.normal(0, 1, (in_units, out_units))
+        self.w = np.random.normal(0, np.sqrt(1/in_units), (in_units, out_units))
         self.b = np.zeros((1, out_units))
         self.d_v_w = np.zeros((in_units, out_units))
         self.d_v_b = np.zeros((1, out_units))
@@ -341,17 +341,27 @@ def train(model, x_train, y_train, x_valid, y_valid, config):
     epochs = config['epochs']
     threshold = config['early_stop_epoch']
     alpha = config['learning_rate']
-    val_loss = 10000*np.ones((epochs,1))
+#    val_loss = 10000*np.ones((epochs,1))
     beta = config['momentum_gamma']
     batch_size = config['batch_size']
     
-    N = x_train.shape[0]
+    N = x_train.shape[0]    
     num_batches  = int((N+batch_size -1 )/ batch_size)
     
     best_weight = []
-    best_bias = []
+    best_epoch  = []
+    best_bias   = []
     #print(len(model.layers))
-
+    train_loss_list = []
+    
+    train_acc_list = []
+    val_acc_list   = []
+    val_loss_list  = []
+    
+    counter = 0
+    
+    lam = 0
+    
       
     for i in range(1, epochs+1):
         shuffled_indices = np.random.permutation(range(N))
@@ -367,28 +377,36 @@ def train(model, x_train, y_train, x_valid, y_valid, config):
             model.backward()            
             #weight update and storing
             for k in range(0, len(config['layer_specs']), 2):
-                mom_w = model.layers[k].d_v_w * beta + alpha*model.layers[k].d_w
-                mom_b = model.layers[k].d_v_b * beta + alpha*model.layers[k].d_b
-                model.layers[k].w = model.layers[k].w - mom_w
-                model.layers[k].b = model.layers[k].b - mom_b
-                model.layers[k].d_v_w = mom_w
-                model.layers[k].d_v_b = mom_b     
+                mom_w = -model.layers[k].d_v_w * beta + alpha*(model.layers[k].d_w + lam*model.layers[k].w )
+                mom_b = -model.layers[k].d_v_b * beta + alpha*(model.layers[k].d_b + lam*model.layers[k].b )
+                model.layers[k].w = model.layers[k].w - (mom_w  )
+                model.layers[k].b = model.layers[k].b - (mom_b  )
+                model.layers[k].d_v_w = -mom_w
+                model.layers[k].d_v_b = -mom_b     
 
-        y, loss = model(x_train, y_train)        
+        y, loss = model(x_train, y_train)  
+        train_loss_list.append(loss)
+        
         train_pred = np.argmax(y, axis=1)  
         acc = np.mean(np.argwhere(y_train==1)[:,1]==train_pred) 
-
+        
+        train_acc_list.append(acc)
+        
+        
         print("Training acc for epoch ", i, " is:\n", acc) 
         print("Training loss for epoch ", i, " is:\n", loss) 
-        val_y, val_loss[i-1, 0] = model(x_valid, y_valid)
+        val_y, val_loss = model(x_valid, y_valid)
+        val_loss_list.append(val_loss)
 
         val_pred = np.argmax(val_y, axis=1)  
         acc = np.mean(np.argwhere(y_valid==1)[:,1]==val_pred) 
-
+        val_acc_list.append(acc)
+        
         print("Validation acc for epoch ", i, " is:\n", acc) 
-        print("Validation loss for epoch ", i, " is:\n", val_loss[i-1,0])
-        if(i>1 and val_loss[i-1]<val_loss[i-2]):
+        print("Validation loss for epoch ", i, " is:\n", val_loss)
+        if(i>1 and val_loss <min(val_loss_list[:-1])):
             #update best weights
+            counter = 0
             weight = []
             bias = []
             for k in range(0, len(config['layer_specs']), 2):
@@ -396,19 +414,27 @@ def train(model, x_train, y_train, x_valid, y_valid, config):
                 bias.append(model.layers[k].b)
             best_weight = weight    
             best_bias = bias
-
-        if(i>=6 and val_loss[i-1]>=val_loss[i-2] and val_loss[i-2]>=val_loss[i-3]and val_loss[i-3]>=val_loss[i-4]and val_loss[i-4]>=val_loss[i-5]and val_loss[i-5]>=val_loss[i-6]):
+            best_epoch = i
+        else:
+            counter +=1
+        
+        if counter > threshold:
+            print("best epoch:", best_epoch)
             break
+
+#        if(i>=6 and val_loss[i-1]>=val_loss[i-2] and val_loss[i-2]>=val_loss[i-3]and val_loss[i-3]>=val_loss[i-4]and val_loss[i-4]>=val_loss[i-5]and val_loss[i-5]>=val_loss[i-6]):
+#            break
     
-    print(len(best_weight))
-    print('Epoch: ', i)
+    #print(len(best_weight))
+    #print('Epoch: ', i)
     #print(val_loss)
     p = 0
     for k in range(0, len(config['layer_specs']), 2):
         model.layers[k].w = best_weight[p]
         model.layers[k].b = best_bias[p]
         p = p + 1
-    return
+    
+    return train_loss_list, val_loss_list, train_acc_list, val_acc_list
     raise NotImplementedError("Train method not implemented")
 
 
@@ -443,6 +469,31 @@ if __name__ == "__main__":
     x_valid, y_valid = x[int(0.8*x.shape[0]):, :], y[int(0.8*y.shape[0]):, :]
     
     # train the model
-    train(model, x_train, y_train, x_valid, y_valid, config)
+    train_loss_list, val_loss_list, train_acc_list, val_acc_list = train(model, x_train, y_train, x_valid, y_valid, config)
 
+#    val_loss_list = val_loss[:len(val_acc_list)]
+    
+    x = [i for i in range(1, len(train_loss_list) + 1)]
+
+    plt.title("Loss vs. Number of epochs")
+    plt.xlabel("Number of epochs")
+    plt.ylabel("Loss")
+    plt.plot(x, train_loss_list, color='r', label='training loss')
+    plt.plot(x, val_loss_list, color = 'b', label = 'validation loss')
+    
+    plt.legend()
+    plt.show()
+    
+    plt.title("Accuracies vs. Number of epochs")
+    plt.xlabel("Number of epochs")
+    plt.ylabel("Accuracy")
+    plt.plot(x, train_acc_list, color='r', label='training accuracy')
+    plt.plot(x, val_acc_list, color = 'b', label='validation accuracy')
+    
+    plt.legend()
+    plt.show()    
+    
+    
+    
+    
     test_acc = test(model, x_test, y_test)
