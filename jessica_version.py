@@ -15,6 +15,7 @@
 import os, gzip
 import yaml
 import numpy as np
+import matplotlib.pyplot as plt
 
 
 def load_config(path):
@@ -28,12 +29,9 @@ def normalize_data(img):
     """
     Normalize your inputs here and return them.
     """
-    #print(img[1,:])
-    nor = [np.linalg.norm(img[i,:]) for i in range(len(img))]
-    nor = np.asarray(nor)
+    nor = np.linalg.norm(img, axis = 1)
     nor = np.reshape(nor, (len(img), 1))
     img = np.divide(img, nor)
-    #print(img[1,:])
     return img
 
 
@@ -160,14 +158,14 @@ class Activation():
         """
         y = x
         y[y<=0] = 0
-        return y
+        return (y)
         raise NotImplementedError("ReLu not implemented")
 
     def grad_sigmoid(self):
         """
         Compute the gradient for sigmoid here.
         """
-        return sigmoid(self.x)*(sigmoid(-self.x))
+        return self.sigmoid(self.x)*(self.sigmoid(-self.x))
         raise NotImplementedError("Sigmoid gradient not implemented")
 
     def grad_tanh(self):
@@ -210,9 +208,13 @@ class Layer():
         self.d_x = None  # Save the gradient w.r.t x in this
         self.d_w = None  # Save the gradient w.r.t w in this
         self.d_b = None  # Save the gradient w.r.t b in this
+        self.d_v_w = None
+        self.d_v_b = None
 
-        self.w = np.random.rand(in_units, out_units)
-        self.b = np.random.rand(1, out_units)
+        self.w = np.random.normal(0, np.sqrt(1/in_units), (in_units, out_units))
+        self.b = np.zeros((1, out_units))
+        self.d_v_w = np.zeros((in_units, out_units))
+        self.d_v_b = np.zeros((1, out_units))
 
     def __call__(self, x):
         """
@@ -287,19 +289,16 @@ class Neuralnetwork():
         inputs, i = x, 0
                
         while i < len(self.layers):
-               outputs = self.layers[i](inputs)
-               i += 1
-               if(i==len(self.layers)):
-                   break
-               inputs = self.layers[i](outputs)
-               i += 1
+            outputs = self.layers[i](inputs)
+            i += 1
+            if(i==len(self.layers)):
+                break
+            inputs = self.layers[i](outputs)
+            i += 1
 
         self.y = softmax(outputs)
 
-        if targets is not None:
-               return self.y
-
-        return self.y, loss(outputs, targets)
+        return (self.y, self.loss(self.y, targets))
         
         raise NotImplementedError("Forward not implemented for NeuralNetwork")
 
@@ -307,6 +306,10 @@ class Neuralnetwork():
         '''
         compute the categorical cross-entropy loss and return it.
         '''
+        #print(logits)
+        logits = np.log(logits)
+        error = -np.multiply(targets, logits)
+        return np.sum(error)/targets.shape[0]
         raise NotImplementedError("Loss not implemented for NeuralNetwork")
 
     def backward(self):
@@ -314,17 +317,17 @@ class Neuralnetwork():
         Implement backpropagation here.
         Call backward methods of individual layer's.
         '''
-        deltas = self.targets - self.y
+        deltas = -(self.targets - self.y)
         i = len(self.layers)-1
 
         while i>=0:
-               prev_delta = self.layers[i].backward(deltas)
-               i -= 1
-               if(i==0):
-                   break
-               deltas = self.layers[i].backward(prev_deltas)
-               i -= 1
-        
+            prev_delta = self.layers[i].backward(deltas)
+            i -= 1
+            if(i<0):
+                break
+            deltas = self.layers[i].backward(prev_delta)
+            i -= 1
+        return
         raise NotImplementedError("Backprop not implemented for NeuralNetwork")
 
 def train(model, x_train, y_train, x_valid, y_valid, config):
@@ -334,13 +337,104 @@ def train(model, x_train, y_train, x_valid, y_valid, config):
     Implement Early Stopping.
     Use config to set parameters for training like learning rate, momentum, etc.
     """
-    epochs = 50
-    for i in range(1, epochs+1):
-        for j in range(len(x_train), 200):
-            model(x_train[j:j+200, :], y_train[j:j+200, :])
-
-
     
+    epochs = config['epochs']
+    threshold = config['early_stop_epoch']
+    alpha = config['learning_rate']
+#    val_loss = 10000*np.ones((epochs,1))
+    beta = config['momentum_gamma']
+    batch_size = config['batch_size']
+    
+    N = x_train.shape[0]
+    num_batches  = int((N+batch_size -1 )/ batch_size)
+    
+    best_weight = []
+    best_epoch  = []
+    best_bias   = []
+    #print(len(model.layers))
+    train_loss_list = []
+    
+    train_acc_list = []
+    val_acc_list   = []
+    val_loss_list  = []
+    
+    counter = 0
+    
+    lam = 0.0001
+    
+      
+    for i in range(1, epochs+1):
+        shuffled_indices = np.random.permutation(range(N))
+        
+        for batch in range(num_batches):
+            minibatch_indices = shuffled_indices[batch_size*batch:min(batch_size*(batch+1), N)]
+            #print(len(minibatch_indices))
+            xbatch = x_train[minibatch_indices, :]
+            ybatch = y_train[minibatch_indices, :]
+            #print(ybatch.shape)
+            y, loss = model(xbatch, ybatch)
+                                
+            model.backward()            
+            #weight update and storing
+            for k in range(0, len(config['layer_specs']), 2):
+                mom_w = model.layers[k].d_v_w * beta + alpha*(model.layers[k].d_w + lam*model.layers[k].w )
+                mom_b = model.layers[k].d_v_b * beta + alpha*(model.layers[k].d_b + lam*model.layers[k].b )
+                model.layers[k].w = model.layers[k].w - (mom_w  )
+                model.layers[k].b = model.layers[k].b - (mom_b  )
+                model.layers[k].d_v_w = mom_w
+                model.layers[k].d_v_b = mom_b     
+
+        y, loss = model(x_train, y_train)  
+        train_loss_list.append(loss)
+        
+        train_pred = np.argmax(y, axis=1)  
+        acc = np.mean(np.argwhere(y_train==1)[:,1]==train_pred) 
+        
+        train_acc_list.append(acc)
+        
+        
+        #print("Training acc for epoch ", i, " is:\n", acc) 
+        #print("Training loss for epoch ", i, " is:\n", loss) 
+        val_y, val_loss = model(x_valid, y_valid)
+        val_loss_list.append(val_loss)
+
+        val_pred = np.argmax(val_y, axis=1)  
+        acc = np.mean(np.argwhere(y_valid==1)[:,1]==val_pred) 
+        val_acc_list.append(acc)
+        
+        #print("Validation acc for epoch ", i, " is:\n", acc) 
+        #print("Validation loss for epoch ", i, " is:\n", val_loss)
+        if(i>1 and val_loss <min(val_loss_list[:-1])):
+            #update best weights
+            counter = 0
+            weight = []
+            bias = []
+            for k in range(0, len(config['layer_specs']), 2):
+                weight.append(model.layers[k].w)
+                bias.append(model.layers[k].b)
+            best_weight = weight    
+            best_bias = bias
+            best_epoch = i
+        else:
+            counter +=1
+        
+        if counter > threshold:
+            print("best epoch:", best_epoch)
+            break
+
+#        if(i>=6 and val_loss[i-1]>=val_loss[i-2] and val_loss[i-2]>=val_loss[i-3]and val_loss[i-3]>=val_loss[i-4]and val_loss[i-4]>=val_loss[i-5]and val_loss[i-5]>=val_loss[i-6]):
+#            break
+    
+    print(len(best_weight))
+    print('Epoch: ', i)
+    #print(val_loss)
+    p = 0
+    for k in range(0, len(config['layer_specs']), 2):
+        model.layers[k].w = best_weight[p]
+        model.layers[k].b = best_bias[p]
+        p = p + 1
+    
+    return train_loss_list, val_loss_list, train_acc_list, val_acc_list
     raise NotImplementedError("Train method not implemented")
 
 
@@ -348,8 +442,33 @@ def test(model, X_test, y_test):
     """
     Calculate and return the accuracy on the test set.
     """
+    pred, loss = model(X_test, y_test)
+    test_pred = np.argmax(pred, axis=1)  
+    acc = np.mean(np.argwhere(y_test==1)[:,1]==test_pred) 
 
+    print("Test acc is:\n", acc) 
+    return test
     raise NotImplementedError("Test method not implemented")
+
+def gradient(model, x, y, layer, i, j, epsilon, w):
+    if w=='bias':
+        model.layers[layer].b[i,j] += epsilon
+        la, loss1 = model(np.copy(x), np.copy(y))
+        model.layers[layer].b[i,j] -= 2*epsilon
+        la, loss2 = model(np.copy(x), np.copy(y))
+        model.layers[layer].b[i,j] += epsilon
+        model.backward()
+        grad = model.layers[layer].d_b[i,j]
+        return (loss1 - loss2)/(2*epsilon), grad
+    
+    model.layers[layer].w[i,j] += epsilon
+    la, loss1 = model(x, y)
+    model.layers[layer].w[i,j] -= 2*epsilon
+    la, loss2 = model(x, y)
+    model.layers[layer].w[i,j] += epsilon
+    model.backward()
+    grad = model.layers[layer].d_w[i,j]
+    return (loss1 - loss2)/(2*epsilon), grad
 
 
 if __name__ == "__main__":
@@ -363,12 +482,47 @@ if __name__ == "__main__":
     x, y = load_data(path="./", mode="train")
     x_test,  y_test  = load_data(path="./", mode="t10k")
 
+
+    indices = np.array([1,16,5,3,19,8,18,6,23,0])
+    x_sam, y_sam = x[indices], y[indices]
+    #print(x.shape[0])
     # Create splits for validation data here.
     # x_valid, y_valid = ...
-    x_train, y_train = x[0:int(0.8*x.shape[[0]), :], y[0:int(0.8*y.shape[[0]), :]
-    x_valid, y_valid = x[int(0.8*x.shape[[0]):, :], y[int(0.8*y.shape[[0]):, :]
-
+    x_train, y_train = x[0:int(0.8*x.shape[0]), :], y[0:int(0.8*y.shape[0]), :]
+    x_valid, y_valid = x[int(0.8*x.shape[0]):, :], y[int(0.8*y.shape[0]):, :]
+    
     # train the model
-    train(model, x_train, y_train, x_valid, y_valid, config)
+    train_loss_list, val_loss_list, train_acc_list, val_acc_list = train(model, x_train, y_train, x_valid, y_valid, config)
+
+#    val_loss_list = val_loss[:len(val_acc_list)]
+    
+    x = [i for i in range(1, len(train_loss_list) + 1)]
+
+    plt.title("Plot showing training and validation loss against number of epochs")
+    plt.xlabel("Number of epochs")
+    plt.ylabel("Loss")
+    plt.plot(x, train_loss_list, color='r', label='training loss')
+    plt.plot(x, val_loss_list, color = 'b', label = 'validation loss')
+    
+    plt.legend()
+    plt.show()
+    
+    plt.title("Plot showing training and validation accuracies against number of epochs")
+    plt.xlabel("Number of epochs")
+    plt.ylabel("Accuracy")
+    plt.plot(x, train_acc_list, color='r', label='training accuracy')
+    plt.plot(x, val_acc_list, color = 'b', label='validation accuracy')
+    
+    plt.legend()
+    plt.show()    
 
     test_acc = test(model, x_test, y_test)
+
+    model  = Neuralnetwork(config)
+
+    for i in range(len(indices)):
+        a, b = gradient(model, x_sam[i].reshape((1, x_sam.shape[1])),
+                       y_sam[i].reshape((1, y_sam.shape[1])), 0, 321, 51, 0.01, w='wt')
+        print(round(a, 7), round(b, 7), round(a-b, 7))
+
+    
