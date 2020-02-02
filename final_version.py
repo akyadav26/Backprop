@@ -345,7 +345,7 @@ def train(model, x_train, y_train, x_valid, y_valid, config):
     beta = config['momentum_gamma']
     batch_size = config['batch_size']
     
-    N = x_train.shape[0]    
+    N = x_train.shape[0]
     num_batches  = int((N+batch_size -1 )/ batch_size)
     
     best_weight = []
@@ -360,7 +360,7 @@ def train(model, x_train, y_train, x_valid, y_valid, config):
     
     counter = 0
     
-    lam = 0
+    lam = 0.0001
     
       
     for i in range(1, epochs+1):
@@ -393,8 +393,8 @@ def train(model, x_train, y_train, x_valid, y_valid, config):
         train_acc_list.append(acc)
         
         
-        print("Training acc for epoch ", i, " is:\n", acc) 
-        print("Training loss for epoch ", i, " is:\n", loss) 
+        #print("Training acc for epoch ", i, " is:\n", acc) 
+        #print("Training loss for epoch ", i, " is:\n", loss) 
         val_y, val_loss = model(x_valid, y_valid)
         val_loss_list.append(val_loss)
 
@@ -402,8 +402,8 @@ def train(model, x_train, y_train, x_valid, y_valid, config):
         acc = np.mean(np.argwhere(y_valid==1)[:,1]==val_pred) 
         val_acc_list.append(acc)
         
-        print("Validation acc for epoch ", i, " is:\n", acc) 
-        print("Validation loss for epoch ", i, " is:\n", val_loss)
+        #print("Validation acc for epoch ", i, " is:\n", acc) 
+        #print("Validation loss for epoch ", i, " is:\n", val_loss)
         if(i>1 and val_loss <min(val_loss_list[:-1])):
             #update best weights
             counter = 0
@@ -425,8 +425,8 @@ def train(model, x_train, y_train, x_valid, y_valid, config):
 #        if(i>=6 and val_loss[i-1]>=val_loss[i-2] and val_loss[i-2]>=val_loss[i-3]and val_loss[i-3]>=val_loss[i-4]and val_loss[i-4]>=val_loss[i-5]and val_loss[i-5]>=val_loss[i-6]):
 #            break
     
-    #print(len(best_weight))
-    #print('Epoch: ', i)
+    print(len(best_weight))
+    print('Epoch: ', i)
     #print(val_loss)
     p = 0
     for k in range(0, len(config['layer_specs']), 2):
@@ -450,6 +450,26 @@ def test(model, X_test, y_test):
     return test
     raise NotImplementedError("Test method not implemented")
 
+def gradient(model, x, y, layer, i, j, epsilon, w):
+    if w=='bias':
+        model.layers[layer].b[i,j] += epsilon
+        la, loss1 = model(np.copy(x), np.copy(y))
+        model.layers[layer].b[i,j] -= 2*epsilon
+        la, loss2 = model(np.copy(x), np.copy(y))
+        model.layers[layer].b[i,j] += epsilon
+        model.backward()
+        grad = model.layers[layer].d_b[i,j]
+        return (loss1 - loss2)/(2*epsilon), grad
+    
+    model.layers[layer].w[i,j] += epsilon
+    la, loss1 = model(x, y)
+    model.layers[layer].w[i,j] -= 2*epsilon
+    la, loss2 = model(x, y)
+    model.layers[layer].w[i,j] += epsilon
+    model.backward()
+    grad = model.layers[layer].d_w[i,j]
+    return (loss1 - loss2)/(2*epsilon), grad
+
 
 if __name__ == "__main__":
     # Load the configuration.
@@ -462,6 +482,9 @@ if __name__ == "__main__":
     x, y = load_data(path="./", mode="train")
     x_test,  y_test  = load_data(path="./", mode="t10k")
 
+
+    indices = np.array([1,16,5,3,19,8,18,6,23,0])
+    x_sam, y_sam = x[indices], y[indices]
     #print(x.shape[0])
     # Create splits for validation data here.
     # x_valid, y_valid = ...
@@ -475,7 +498,7 @@ if __name__ == "__main__":
     
     x = [i for i in range(1, len(train_loss_list) + 1)]
 
-    plt.title("Loss vs. Number of epochs")
+    plt.title("Plot showing training and validation loss against number of epochs")
     plt.xlabel("Number of epochs")
     plt.ylabel("Loss")
     plt.plot(x, train_loss_list, color='r', label='training loss')
@@ -484,7 +507,7 @@ if __name__ == "__main__":
     plt.legend()
     plt.show()
     
-    plt.title("Accuracies vs. Number of epochs")
+    plt.title("Plot showing training and validation accuracies against number of epochs")
     plt.xlabel("Number of epochs")
     plt.ylabel("Accuracy")
     plt.plot(x, train_acc_list, color='r', label='training accuracy')
@@ -492,8 +515,12 @@ if __name__ == "__main__":
     
     plt.legend()
     plt.show()    
-    
-    
-    
-    
+
     test_acc = test(model, x_test, y_test)
+
+    model  = Neuralnetwork(config)
+
+    for i in range(len(indices)):
+        a, b = gradient(model, x_sam[i].reshape((1, x_sam.shape[1])),
+                       y_sam[i].reshape((1, y_sam.shape[1])), 0, 321, 51, 0.01, w='wt')
+        print(round(a, 7), round(b, 7), round(a-b, 7))
